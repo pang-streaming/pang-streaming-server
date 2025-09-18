@@ -4,8 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-thiserror = "1.0"
 scuffle-rtmp = "0.2.3"
 tokio = { version = "1.47.1", features = ["full"] }
 serde = { version = "1.0.225", features = ["derive"] }
 toml = "0.9.6"
+axum = "0.8.4"
+tower-http = { version = "0.6", features = ["cors"] }
+gstreamer = "0.24.2"
+gstreamer-app = "0.24.2"
