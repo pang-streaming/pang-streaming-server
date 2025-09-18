@@ -2,7 +2,7 @@ use scuffle_rtmp::{
     ServerSession,
     session::server::{ServerSessionError, SessionData, SessionHandler},
 };
-use tokio::net::TcpListener;
+use tokio::{net::TcpListener, stream};
 
 struct Handler;
 
@@ -12,22 +12,30 @@ impl SessionHandler for Handler {
         stream_id: u32,
         data: SessionData,
     ) -> Result<(), ServerSessionError> {
-        // Handle incoming video/audio/meta data
         Ok(())
     }
 
+    // When live stream strart
     async fn on_publish(
         &mut self,
         stream_id: u32,
         app_name: &str,
-        stream_name: &str,
+        stream_key: &str,
     ) -> Result<(), ServerSessionError> {
-        // Handle the publish event
-        Ok(())
+        println!("stream_key: {}", stream_key);
+        if stream_key == "123" {
+            println!("stream_id: {}", stream_id);
+            println!("app_name: {}", app_name);
+            println!("stream_key: {}", stream_key);
+
+            Ok(())
+        } else {
+            return Err(ServerSessionError::InvalidChunkSize(0));
+        }
     }
 
+    // Stream ended
     async fn on_unpublish(&mut self, stream_id: u32) -> Result<(), ServerSessionError> {
-        // Handle the unpublish event
         Ok(())
     }
 }
@@ -35,7 +43,7 @@ impl SessionHandler for Handler {
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("[::]:1935").await.unwrap();
-    // listening on [::]:1935
+    println!("listening on [::]:1935");
 
     while let Ok((stream, addr)) = listener.accept().await {
         let session = ServerSession::new(stream, Handler);
