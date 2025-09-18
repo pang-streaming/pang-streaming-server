@@ -15,8 +15,7 @@ async fn main() {
         let session = ServerSession::new(stream, Handler);
 
         tokio::spawn(async move {
-            if let Err(err) = session.run().await {
-            }
+            if let Err(err) = session.run().await {}
         });
     }
 }

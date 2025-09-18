@@ -1,16 +1,15 @@
 use reqwest::Client;
-use crate::authentication_layer::authentication_request::response::DataResponse;
+use crate::authentication_layer::authentication_request::response::StreamUserResponse;
 
-async fn post_authentication(stream_key: String, client: &Client) -> Result<DataResponse, &'static str> {
+pub async fn get_authentication(stream_key: &str, client: &Client) -> Result<StreamUserResponse, String> {
     let data = client
-        .get("http://localhost:8080/test")
+        .post("http://localhost:8080/stream")
         .header("X-Stream-Key", stream_key)
         .send().await
         .unwrap();
     if data.status().is_success() {
-        let response: DataResponse = data.json().await.unwrap();
-        Ok(response)
+        Ok(data.json().await.unwrap())
     } else {
-        Err("stream key is not allowed")
+        Err("stream key is not allowed".to_string())
     }
 }

@@ -1,4 +1,6 @@
+use reqwest::Client;
 use scuffle_rtmp::session::server::{ServerSessionError, SessionData, SessionHandler};
+use crate::authentication_layer::auth::authenticate_and_get_stream_id;
 
 pub struct Handler;
 
@@ -44,8 +46,9 @@ impl SessionHandler for Handler {
         app_name: &str,
         stream_key: &str,
     ) -> Result<(), ServerSessionError> {
+        let client = Client::new();
         println!("stream_key: {}", stream_key);
-        // TODO: add token validate func
+        let stream_id = authenticate_and_get_stream_id(stream_key, &client).await?;
         if stream_key == "123" {
             println!("stream_id: {}", stream_id);
             println!("app_name: {}", app_name);

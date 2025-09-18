@@ -4,4 +4,4 @@
  username, start_time 을 반환하게 된다.
  */
 pub mod api;
-mod response;
+pub mod response;
