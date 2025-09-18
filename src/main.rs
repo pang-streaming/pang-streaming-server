@@ -1,13 +1,21 @@
-use tokio::net::TcpListener;
+use scuffle_rtmp::ServerSession;
+use tokio::{net::TcpListener, stream};
+
+mod session_handler; // Handler 정의 파일
+use session_handler::Handler;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("Listening for connections on port 1935");
-    let listener = TcpListener::bind("0.0.0.0:1935").await?;
+async fn main() {
+    let listener = TcpListener::bind("[::]:1935").await.unwrap();
+    println!("listening on [::]:1935");
 
-    loop {
-        let (stream, connection_info) = listener.accept().await?;
+    while let Ok((stream, addr)) = listener.accept().await {
+        let session = ServerSession::new(stream, Handler);
 
-        println!("Connect on {}", connection_info.ip())
+        tokio::spawn(async move {
+            if let Err(err) = session.run().await {
+                // Handle the session error
+            }
+        });
     }
 }
