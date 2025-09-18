@@ -2,6 +2,7 @@ use scuffle_rtmp::ServerSession;
 use tokio::{net::TcpListener, stream};
 mod session_handler;
 mod config;
+mod authentication_layer;
 
 use session_handler::Handler;
 
