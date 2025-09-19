@@ -4,6 +4,9 @@ use tokio::net::TcpListener;
 mod config;
 mod handler;
 mod m3u8_server;
+mod session_handler;
+mod authentication_layer;
+
 use handler::Handler;
 use m3u8_server::start_m3u8_server_background;
 

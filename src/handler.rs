@@ -5,11 +5,14 @@ use std::sync::{Arc, Mutex};
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
+use reqwest::Client;
 
 pub struct Handler {
     pipelines: Arc<Mutex<HashMap<u32, Pipeline>>>,
     output_dir: String,
     segment_delay: u64,
+    authenticated_stream_id: Option<String>,
+    http_client: Client,
 }
 
 struct Pipeline {
@@ -19,7 +22,7 @@ struct Pipeline {
 }
 
 impl Handler {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(client: Client) -> Result<Self, Box<dyn std::error::Error>> {
         gst::init().map_err(|e| format!("Failed to initialize GStreamer: {}", e))?;
 
         let config = crate::config::get_config();
@@ -34,6 +37,8 @@ impl Handler {
             pipelines: Arc::new(Mutex::new(HashMap::new())),
             output_dir,
             segment_delay,
+            authenticated_stream_id: None,
+            http_client: client,
         })
     }
 
