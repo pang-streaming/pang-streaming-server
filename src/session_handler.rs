@@ -2,7 +2,19 @@ use reqwest::Client;
 use scuffle_rtmp::session::server::{ServerSessionError, SessionData, SessionHandler};
 use crate::authentication_layer::auth::authenticate_and_get_stream_id;
 
-pub struct Handler;
+pub struct Handler {
+    authenticated_stream_id: Option<String>,
+    http_client: Client,
+}
+
+impl Handler {
+    pub fn new(client: Client) -> Self {
+        Self {
+            authenticated_stream_id: None,
+            http_client: client,
+        }
+    }
+}
 
 impl SessionHandler for Handler {
     async fn on_data(
@@ -13,8 +25,8 @@ impl SessionHandler for Handler {
         match data {
             SessionData::Video { timestamp, data } => {
                 println!(
-                    "Stream {} Video chunk: timestamp={} size={}",
-                    stream_id,
+                    "Stream {:?} Video chunk: timestamp={} size={}",
+                    self.authenticated_stream_id,
                     timestamp,
                     data.len()
                 );
@@ -39,25 +51,15 @@ impl SessionHandler for Handler {
         Ok(())
     }
 
-    // When live stream strart
     async fn on_publish(
         &mut self,
         stream_id: u32,
         app_name: &str,
         stream_key: &str,
     ) -> Result<(), ServerSessionError> {
-        let client = Client::new();
         println!("stream_key: {}", stream_key);
-        let stream_id = authenticate_and_get_stream_id(stream_key, &client).await?;
-        if stream_key == "123" {
-            println!("stream_id: {}", stream_id);
-            println!("app_name: {}", app_name);
-            println!("stream_key: {}", stream_key);
-
-            Ok(())
-        } else {
-            return Err(ServerSessionError::InvalidChunkSize(0));
-        }
+        self.authenticated_stream_id = Some(authenticate_and_get_stream_id(stream_key, &self.http_client).await?);
+        Ok(())
     }
 
     // Stream ended
