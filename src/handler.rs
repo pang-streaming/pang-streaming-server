@@ -15,6 +15,7 @@ pub struct Handler {
 struct Pipeline {
     pipeline: gst::Pipeline,
     appsrc: gst_app::AppSrc,
+    stop_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl Handler {
@@ -22,11 +23,9 @@ impl Handler {
         gst::init().map_err(|e| format!("Failed to initialize GStreamer: {}", e))?;
 
         let config = crate::config::get_config();
-
         let segment_delay = config.server.segment_delay;
 
         let output_dir = "./hls_output".to_string();
-
         std::fs::create_dir_all(&output_dir).unwrap_or_else(|e| {
             eprintln!("Failed to create output directory: {}", e);
         });
@@ -150,27 +149,73 @@ impl Handler {
 
         pipeline.set_state(gst::State::Playing)?;
 
+        let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel();
         let output_path_clone = output_path.clone();
         let playlist_path = format!("{}/playlist.m3u8", output_path);
         let segment_path_clone = segment_path.clone();
-        let segment_delay = self.segment_delay.clone();
+        let segment_delay = self.segment_delay;
+
         tokio::spawn(async move {
-            Self::create_segments_and_playlist(
-                playlist_path,
-                output_path_clone,
-                segment_path_clone,
-                segment_delay,
-            )
-            .await;
+            use std::time::Duration;
+            use tokio::time::sleep;
+
+            let mut segment_counter = 0u32;
+
+            loop {
+                tokio::select! {
+                    _ = &mut stop_rx => {
+                        println!("Stopping segment loop for stream {}", stream_id);
+                        break;
+                    }
+                    _ = sleep(Duration::from_secs(segment_delay)) => {
+                        if std::path::Path::new(&segment_path_clone).exists() {
+                            let segment_name = format!("segment{:05}.ts", segment_counter);
+                            let new_segment_path = format!("{}/{}", output_path_clone, segment_name);
+
+                            if let Ok(_) = std::fs::copy(&segment_path_clone, &new_segment_path) {
+                                println!("Created segment: {}", segment_name);
+
+                                let mut playlist = String::new();
+                                playlist.push_str("#EXTM3U\n");
+                                playlist.push_str("#EXT-X-VERSION:3\n");
+                                playlist.push_str("#EXT-X-TARGETDURATION:3\n");
+                                playlist.push_str(&format!("#EXT-X-MEDIA-SEQUENCE:{}\n", segment_counter));
+
+                                let window_size = 5;
+
+                                let start = if segment_counter >= window_size {
+                                    segment_counter - window_size + 1
+                                } else {
+                                    0
+                                };
+
+                                for i in start..=segment_counter {
+                                    let seg_name = format!("segment{:05}.ts", i);
+                                    playlist.push_str("#EXTINF:3.0,\n");
+                                    playlist.push_str(&format!("{}\n", seg_name));
+                                }
+
+                                if let Err(e) = std::fs::write(&playlist_path, playlist) {
+                                    eprintln!("Failed to write playlist: {}", e);
+                                } else {
+                                    println!("Updated playlist with segment {}", segment_counter);
+                                }
+
+                                segment_counter += 1;
+                            }
+                        }
+                    }
+                }
+            }
         });
 
         let pipeline_info: Pipeline = Pipeline {
             pipeline,
             appsrc: appsrc_element,
+            stop_tx,
         };
 
-        let mut pipelines: std::sync::MutexGuard<'_, HashMap<u32, Pipeline>> =
-            self.pipelines.lock().unwrap();
+        let mut pipelines = self.pipelines.lock().unwrap();
         pipelines.insert(stream_id, pipeline_info);
 
         println!(
@@ -179,51 +224,6 @@ impl Handler {
         );
         println!("Stream will be saved to: {}", segment_path);
         Ok(())
-    }
-
-    async fn create_segments_and_playlist(
-        playlist_path: String,
-        output_path: String,
-        stream_path: String,
-        segment_delay: u64,
-    ) {
-        use std::time::Duration;
-        use tokio::time::sleep;
-
-        let mut segment_counter = 0u32;
-
-        loop {
-            sleep(Duration::from_secs(segment_delay)).await;
-
-            if std::path::Path::new(&stream_path).exists() {
-                let segment_name = format!("segment{:05}.ts", segment_counter);
-                let new_segment_path = format!("{}/{}", output_path, segment_name);
-
-                if let Ok(_) = std::fs::copy(&stream_path, &new_segment_path) {
-                    println!("Created segment: {}", segment_name);
-
-                    let mut playlist = String::new();
-                    playlist.push_str("#EXTM3U\n");
-                    playlist.push_str("#EXT-X-VERSION:3\n");
-                    playlist.push_str("#EXT-X-TARGETDURATION:3\n");
-                    playlist.push_str("#EXT-X-MEDIA-SEQUENCE:0\n");
-
-                    for i in 0..=segment_counter {
-                        let seg_name = format!("segment{:05}.ts", i);
-                        playlist.push_str("#EXTINF:3.0,\n");
-                        playlist.push_str(&format!("{}\n", seg_name));
-                    }
-
-                    if let Err(e) = std::fs::write(&playlist_path, playlist) {
-                        eprintln!("Failed to write playlist: {}", e);
-                    } else {
-                        println!("Updated playlist with segment {}", segment_counter);
-                    }
-
-                    segment_counter += 1;
-                }
-            }
-        }
     }
 
     fn create_flv_header() -> Vec<u8> {
@@ -238,26 +238,19 @@ impl Handler {
 
     fn create_flv_tag(tag_type: u8, timestamp: u32, data: &[u8]) -> Vec<u8> {
         let mut tag = Vec::new();
-
         tag.push(tag_type);
-
         let data_size = data.len() as u32;
         tag.push((data_size >> 16) as u8);
         tag.push((data_size >> 8) as u8);
         tag.push(data_size as u8);
-
         tag.push((timestamp >> 16) as u8);
         tag.push((timestamp >> 8) as u8);
         tag.push(timestamp as u8);
         tag.push((timestamp >> 24) as u8);
-
         tag.extend_from_slice(&[0, 0, 0]);
-
         tag.extend_from_slice(data);
-
         let tag_size = (11 + data.len()) as u32;
         tag.extend_from_slice(&tag_size.to_be_bytes());
-
         tag
     }
 
@@ -266,12 +259,11 @@ impl Handler {
         stream_id: u32,
         flv_data: Vec<u8>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let mut pipelines: std::sync::MutexGuard<'_, HashMap<u32, Pipeline>> =
-            self.pipelines.lock().unwrap();
+        let mut pipelines = self.pipelines.lock().unwrap();
         if let Some(pipeline_info) = pipelines.get_mut(&stream_id) {
             let mut buffer = gst::Buffer::with_size(flv_data.len()).unwrap();
             {
-                let buffer_ref: &mut gstreamer::BufferRef = buffer.get_mut().unwrap();
+                let buffer_ref = buffer.get_mut().unwrap();
                 let mut map = buffer_ref.map_writable().unwrap();
                 map.copy_from_slice(&flv_data);
             }
@@ -295,10 +287,9 @@ impl Handler {
     fn stop_hls_conversion(&self, stream_id: u32) {
         let mut pipelines = self.pipelines.lock().unwrap();
         if let Some(pipeline_info) = pipelines.remove(&stream_id) {
+            let _ = pipeline_info.stop_tx.send(());
             let _ = pipeline_info.appsrc.end_of_stream();
-
             let _ = pipeline_info.pipeline.set_state(gst::State::Null);
-
             println!("GStreamer HLS conversion stopped for stream {}", stream_id);
         }
     }
@@ -318,46 +309,16 @@ impl SessionHandler for Handler {
     ) -> Result<(), ServerSessionError> {
         match data {
             SessionData::Video { timestamp, data } => {
-                println!(
-                    "Stream {} Video chunk: timestamp={} size={}",
-                    stream_id,
-                    timestamp,
-                    data.len()
-                );
-
                 let flv_tag = Self::create_flv_tag(9, timestamp, &data);
-
-                if let Err(e) = self.push_to_gstreamer(stream_id, flv_tag) {
-                    eprintln!("Failed to push video data to GStreamer: {}", e);
-                }
+                let _ = self.push_to_gstreamer(stream_id, flv_tag);
             }
             SessionData::Audio { timestamp, data } => {
-                println!(
-                    "Stream {} Audio chunk: timestamp={} size={}",
-                    stream_id,
-                    timestamp,
-                    data.len()
-                );
-
                 let flv_tag = Self::create_flv_tag(8, timestamp, &data);
-
-                if let Err(e) = self.push_to_gstreamer(stream_id, flv_tag) {
-                    eprintln!("Failed to push audio data to GStreamer: {}", e);
-                }
+                let _ = self.push_to_gstreamer(stream_id, flv_tag);
             }
             SessionData::Amf0 { timestamp, data } => {
-                println!(
-                    "Stream {} Metadata: timestamp={} size={}",
-                    stream_id,
-                    timestamp,
-                    data.len()
-                );
-
                 let flv_tag = Self::create_flv_tag(18, timestamp, &data);
-
-                if let Err(e) = self.push_to_gstreamer(stream_id, flv_tag) {
-                    eprintln!("Failed to push metadata to GStreamer: {}", e);
-                }
+                let _ = self.push_to_gstreamer(stream_id, flv_tag);
             }
         }
         Ok(())
@@ -369,12 +330,6 @@ impl SessionHandler for Handler {
         app_name: &str,
         stream_key: &str,
     ) -> Result<(), ServerSessionError> {
-        println!(
-            "Publishing stream - ID: {}, App: {}, Key: {}",
-            stream_id, app_name, stream_key
-        );
-
-        // TODO: 토큰 검증 로직 추가
         if stream_key.is_empty() {
             return Err(ServerSessionError::InvalidChunkSize(0));
         }
@@ -385,22 +340,12 @@ impl SessionHandler for Handler {
         }
 
         let flv_header = Self::create_flv_header();
-        if let Err(e) = self.push_to_gstreamer(stream_id, flv_header) {
-            eprintln!("Failed to push FLV header: {}", e);
-        }
-
-        println!(
-            "Stream {} is now live! HLS segments will be generated via GStreamer.",
-            stream_id
-        );
+        let _ = self.push_to_gstreamer(stream_id, flv_header);
         Ok(())
     }
 
     async fn on_unpublish(&mut self, stream_id: u32) -> Result<(), ServerSessionError> {
-        println!("Stream {} ended", stream_id);
-
         self.stop_hls_conversion(stream_id);
-
         Ok(())
     }
 }

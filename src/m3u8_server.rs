@@ -1,12 +1,18 @@
 use axum::{
     Router,
+    body::Body,
     extract::Path,
     http::{StatusCode, header},
+    response::IntoResponse,
     routing::get,
 };
+
+use tokio::fs::File;
+
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tokio::fs;
+use tokio_util::io::ReaderStream;
 use tower_http::cors::CorsLayer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,24 +107,22 @@ async fn get_init_mp4(
 
 async fn get_ts_segment(
     Path((stream_key, segment)): Path<(String, String)>,
-) -> Result<([(String, String); 1], Vec<u8>), StatusCode> {
+) -> Result<impl IntoResponse, StatusCode> {
     if !segment.ends_with(".ts") {
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let file_path = format!("./hls_output/{}/{}", stream_key, segment);
+    let file_path = PathBuf::from("hls_output").join(&stream_key).join(&segment);
 
-    match fs::read(&file_path).await {
-        Ok(data) => Ok((
-            [(
-                header::CONTENT_TYPE.as_str().to_string(),
-                "video/mp2t".to_string(),
-            )],
-            data,
-        )),
-        Err(_) => Err(StatusCode::NOT_FOUND),
-    }
+    let file = File::open(file_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    Ok(([(header::CONTENT_TYPE, "video/mp2t")], body))
 }
+
 pub async fn start_m3u8_server() -> Result<(), Box<dyn std::error::Error>> {
     let server = Arc::new(M3U8Server::new());
     let app = Router::new()
