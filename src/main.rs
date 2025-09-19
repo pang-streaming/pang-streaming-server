@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use scuffle_rtmp::ServerSession;
 use reqwest::Client;
 use tokio::net::TcpListener;
@@ -15,15 +16,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     start_m3u8_server_background();
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     let config = config::get_config();
-    let client = Client::new();
+    let client = Arc::new(Client::new());
     let listener = TcpListener::bind(format!("[::]:{}", config.server.port)).await?;
     println!("RTMP Server listening on [::]:{}", config.server.port);
 
     while let Ok((stream, addr)) = listener.accept().await {
         println!("New connection from: {}", addr);
-
+        let clone_client = Arc::clone(&client);
         tokio::spawn(async move {
-            let handler = match Handler::new(client.clone()) {
+            let handler = match Handler::new(clone_client) {
                 Ok(h) => h,
                 Err(e) => {
                     eprintln!("Failed to create handler for {}: {}", addr, e);
