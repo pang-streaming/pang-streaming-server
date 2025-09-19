@@ -5,11 +5,14 @@ use std::sync::{Arc, Mutex};
 use gstreamer as gst;
 use gstreamer::prelude::*;
 use gstreamer_app as gst_app;
+use reqwest::Client;
 
 pub struct Handler {
     pipelines: Arc<Mutex<HashMap<u32, Pipeline>>>,
     output_dir: String,
     segment_delay: u64,
+    authenticated_stream_id: Option<String>,
+    http_client: Arc<Client>,
 }
 
 struct Pipeline {
@@ -19,7 +22,7 @@ struct Pipeline {
 }
 
 impl Handler {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(client: Arc<Client>) -> Result<Self, Box<dyn std::error::Error>> {
         gst::init().map_err(|e| format!("Failed to initialize GStreamer: {}", e))?;
 
         let config = crate::config::get_config();
@@ -34,6 +37,8 @@ impl Handler {
             pipelines: Arc::new(Mutex::new(HashMap::new())),
             output_dir,
             segment_delay,
+            authenticated_stream_id: None,
+            http_client: client,
         })
     }
 
@@ -151,6 +156,7 @@ impl Handler {
 
         let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel();
         let output_path_clone = output_path.clone();
+        eprintln!("{}", format!("플리 보여주기{}", output_path_clone));
         let playlist_path = format!("{}/playlist.m3u8", output_path);
         let segment_path_clone = segment_path.clone();
         let segment_delay = self.segment_delay;
@@ -292,12 +298,6 @@ impl Handler {
             let _ = pipeline_info.pipeline.set_state(gst::State::Null);
             println!("GStreamer HLS conversion stopped for stream {}", stream_id);
         }
-    }
-}
-
-impl Default for Handler {
-    fn default() -> Self {
-        Self::new().expect("Failed to initialize GStreamer")
     }
 }
 
