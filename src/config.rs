@@ -10,7 +10,7 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct ServerConfig {
     pub host: String,
-    pub segment_delay: u64,
+    pub segment_delay: u32,
     pub port: u16,
 }
 
