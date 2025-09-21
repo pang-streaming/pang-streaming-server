@@ -6,7 +6,6 @@ use tokio::net::TcpListener;
 mod config;
 mod handler;
 mod m3u8_server;
-mod session_handler;
 mod authentication_layer;
 mod utils;
 mod transform_layer;

@@ -62,21 +62,39 @@ async fn get_segment_playlist(
     let playlist_path = format!("./hls_output/{}/playlist.m3u8", stream_key);
 
     match fs::read_to_string(&playlist_path).await {
-        Ok(content) => Ok((
-            [(
-                header::CONTENT_TYPE.as_str().to_string(),
-                "application/vnd.apple.mpegurl".to_string(),
-            )],
-            content,
-        )),
+        Ok(content) => {
+            let modified_content = content
+                .lines()
+                .map(|line| {
+                    if line.ends_with(".ts") && !line.starts_with("http") {
+                        // 상대 경로 세그먼트를 절대 경로로 변경
+                        format!("http://localhost:8080/hls/{}/{}", stream_key, line)
+                    } else if line.starts_with("http://localhost:8080/") && !line.contains("/hls/") {
+                        // 기존 절대 경로를 /hls/ prefix로 수정
+                        line.replace(
+                            &format!("http://localhost:8080/{}/", stream_key),
+                            &format!("http://localhost:8080/hls/{}/", stream_key)
+                        )
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+            Ok((
+                [(
+                    header::CONTENT_TYPE.as_str().to_string(),
+                    "application/vnd.apple.mpegurl".to_string(),
+                )],
+                modified_content,
+            ))
+        },
         Err(_) => {
-            let default_playlist = format!(
-                "#EXTM3U\n\
+            let default_playlist = "#EXTM3U\n\
                  #EXT-X-VERSION:3\n\
                  #EXT-X-TARGETDURATION:6\n\
                  #EXT-X-MEDIA-SEQUENCE:0\n\
-                 #EXT-X-PLAYLIST-TYPE:EVENT\n"
-            );
+                 #EXT-X-PLAYLIST-TYPE:EVENT\n".to_string();
             Ok((
                 [(
                     header::CONTENT_TYPE.as_str().to_string(),
