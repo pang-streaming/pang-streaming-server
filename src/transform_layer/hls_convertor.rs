@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
-use gstreamer::glib::BoolError;
 use gstreamer::prelude::{ElementExt, ElementExtManual, GstBinExtManual};
 use gstreamer_app::{gst, AppSrc};
 use gstreamer_app::prelude::Cast;
-use reqwest::Client;
 use crate::transform_layer::pads::dynamic_pads::setup_dynamic_pads;
 use crate::transform_layer::pipelines::pipeline_elements::{create_audio, create_output, create_source, create_video};
 use crate::utils::log_error::LogError;
@@ -28,10 +26,9 @@ impl Pipeline {
 }
 
 impl HlsConvertor {
-    pub fn new() -> Result<Self, Box<dyn Error>> {
+    pub fn new(output_dir: String) -> Result<Self, Box<dyn Error>> {
         let config = crate::config::get_config();
         let segment_delay = config.server.segment_delay;
-        let output_dir = "./hls_output".to_string();
         std::fs::create_dir_all(&output_dir)
             .log_error("Failed to create output directory: ");
 
@@ -49,7 +46,8 @@ impl HlsConvertor {
     pub fn start_hls_conversion(
         &self,
         stream_id: u32,
-        stream_name: &str
+        stream_name: &str,
+        stream_host: &str,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let output_path = format!("{}/{}", self.output_dir, stream_name);
 
@@ -58,7 +56,7 @@ impl HlsConvertor {
             std::fs::create_dir_all(&output_path)?;
         }
 
-        let root_playlist = format!("http://localhost:8080/{}/", stream_name);
+        let root_playlist = format!("{}/{}/", stream_host, stream_name);
         let pipeline = self.create_hls_pipeline(
             stream_id,
             &root_playlist,

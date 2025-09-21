@@ -1,8 +1,9 @@
 use scuffle_rtmp::session::server::{ServerSessionError, SessionData, SessionHandler};
 use std::sync::{Arc};
 
-use gstreamer::prelude::*;
 use reqwest::Client;
+use crate::authentication_layer::auth::authenticate_and_get_stream_id;
+use crate::config;
 use crate::transform_layer::gstreamer::push::push_to_gstreamer;
 use crate::transform_layer::hls_convertor::HlsConvertor;
 use crate::utils::log_error::LogError;
@@ -10,7 +11,6 @@ use crate::utils::log_error::LogError;
 pub struct Handler {
     hls_convertor: Arc<HlsConvertor>,
     http_client: Arc<Client>,
-    authenticated_stream_id: Option<String>,
 }
 
 impl Handler {
@@ -18,7 +18,6 @@ impl Handler {
         Ok(Self {
             hls_convertor,
             http_client: client,
-            authenticated_stream_id: None
         })
     }
 }
@@ -27,14 +26,17 @@ impl SessionHandler for Handler {
     async fn on_publish(
         &mut self,
         stream_id: u32,
-        app_name: &str,
+        _app_name: &str,
         stream_key: &str,
     ) -> Result<(), ServerSessionError> {
         if stream_key.is_empty() {
             return Err(ServerSessionError::InvalidChunkSize(0));
         }
 
-        if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, stream_key) {
+        let authed_stream_id: &str = &authenticate_and_get_stream_id(stream_key, &self.http_client).await?;
+        let config = config::get_config();
+
+        if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, authed_stream_id, &config.server.host) {
             eprintln!("Failed to start HLS conversion: {}", e);
             return Err(ServerSessionError::InvalidChunkSize(0));
         }

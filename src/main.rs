@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     let config = config::get_config();
     let client = Arc::new(Client::new());
-    let hls_convertor = Arc::new(HlsConvertor::new()?);
+    let hls_convertor = Arc::new(HlsConvertor::new(format!("{}", config.hls.save_dir))?);
     let listener = TcpListener::bind(format!("[::]:{}", config.server.port)).await?;
     println!("RTMP Server listening on [::]:{}", config.server.port);
 
@@ -39,7 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let session = ServerSession::new(stream, handler);
-
             if let Err(err) = session.run().await {
                 eprintln!("Session error from {}: {:?}", addr, err);
             }

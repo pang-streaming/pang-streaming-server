@@ -2,10 +2,13 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct BaseStreamUserResponse {
-    status: String,
-    message: String,
-    data: StreamUserResponse,
-    timestamp: String
+    #[serde(rename = "status")]
+    _status: String,
+    #[serde(rename = "message")]
+    _message: String,
+    pub(crate) data: StreamUserResponse,
+    #[serde(rename = "timestamp")]
+    _timestamp: String
 }
 
 #[derive(Deserialize, Debug)]

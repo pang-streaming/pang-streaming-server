@@ -9,22 +9,10 @@ use axum::{
 
 use tokio::fs::File;
 
-use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
 use tower_http::cors::CorsLayer;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamInfo {
-    pub stream_key: String,
-    pub title: String,
-    pub is_live: bool,
-    pub viewer_count: u32,
-    pub start_time: u64,
-    pub bitrate: u32,
-    pub resolution: String,
-}
 
 pub struct M3U8Server {}
 
@@ -67,10 +55,8 @@ async fn get_segment_playlist(
                 .lines()
                 .map(|line| {
                     if line.ends_with(".ts") && !line.starts_with("http") {
-                        // 상대 경로 세그먼트를 절대 경로로 변경
                         format!("http://localhost:8080/hls/{}/{}", stream_key, line)
                     } else if line.starts_with("http://localhost:8080/") && !line.contains("/hls/") {
-                        // 기존 절대 경로를 /hls/ prefix로 수정
                         line.replace(
                             &format!("http://localhost:8080/{}/", stream_key),
                             &format!("http://localhost:8080/hls/{}/", stream_key)
@@ -151,7 +137,7 @@ pub async fn start_m3u8_server() -> Result<(), Box<dyn std::error::Error>> {
         .layer(CorsLayer::permissive())
         .with_state(server);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8081").await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
