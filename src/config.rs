@@ -5,13 +5,19 @@ use std::sync::OnceLock;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
+    pub hls: HlsConfig
 }
 
 #[derive(Debug, Deserialize)]
 pub struct ServerConfig {
     pub host: String,
-    pub segment_delay: u64,
+    pub segment_delay: u32,
     pub port: u16,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HlsConfig {
+    pub save_dir: String,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();

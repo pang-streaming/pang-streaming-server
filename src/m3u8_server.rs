@@ -9,22 +9,10 @@ use axum::{
 
 use tokio::fs::File;
 
-use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 use tokio::fs;
 use tokio_util::io::ReaderStream;
 use tower_http::cors::CorsLayer;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamInfo {
-    pub stream_key: String,
-    pub title: String,
-    pub is_live: bool,
-    pub viewer_count: u32,
-    pub start_time: u64,
-    pub bitrate: u32,
-    pub resolution: String,
-}
 
 pub struct M3U8Server {}
 
@@ -62,21 +50,37 @@ async fn get_segment_playlist(
     let playlist_path = format!("./hls_output/{}/playlist.m3u8", stream_key);
 
     match fs::read_to_string(&playlist_path).await {
-        Ok(content) => Ok((
-            [(
-                header::CONTENT_TYPE.as_str().to_string(),
-                "application/vnd.apple.mpegurl".to_string(),
-            )],
-            content,
-        )),
+        Ok(content) => {
+            let modified_content = content
+                .lines()
+                .map(|line| {
+                    if line.ends_with(".ts") && !line.starts_with("http") {
+                        format!("http://localhost:8080/hls/{}/{}", stream_key, line)
+                    } else if line.starts_with("http://localhost:8080/") && !line.contains("/hls/") {
+                        line.replace(
+                            &format!("http://localhost:8080/{}/", stream_key),
+                            &format!("http://localhost:8080/hls/{}/", stream_key)
+                        )
+                    } else {
+                        line.to_string()
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+            Ok((
+                [(
+                    header::CONTENT_TYPE.as_str().to_string(),
+                    "application/vnd.apple.mpegurl".to_string(),
+                )],
+                modified_content,
+            ))
+        },
         Err(_) => {
-            let default_playlist = format!(
-                "#EXTM3U\n\
+            let default_playlist = "#EXTM3U\n\
                  #EXT-X-VERSION:3\n\
                  #EXT-X-TARGETDURATION:6\n\
                  #EXT-X-MEDIA-SEQUENCE:0\n\
-                 #EXT-X-PLAYLIST-TYPE:EVENT\n"
-            );
+                 #EXT-X-PLAYLIST-TYPE:EVENT\n".to_string();
             Ok((
                 [(
                     header::CONTENT_TYPE.as_str().to_string(),
@@ -133,7 +137,7 @@ pub async fn start_m3u8_server() -> Result<(), Box<dyn std::error::Error>> {
         .layer(CorsLayer::permissive())
         .with_state(server);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8081").await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
