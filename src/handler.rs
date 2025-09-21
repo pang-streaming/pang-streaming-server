@@ -8,14 +8,16 @@ use crate::transform_layer::hls_convertor::HlsConvertor;
 use crate::utils::log_error::LogError;
 
 pub struct Handler {
-    hls_convertor: HlsConvertor,
+    hls_convertor: Arc<HlsConvertor>,
+    http_client: Arc<Client>,
     authenticated_stream_id: Option<String>,
 }
 
 impl Handler {
-    pub fn new(client: Arc<Client>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(hls_convertor: Arc<HlsConvertor>, client: Arc<Client>) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
-            hls_convertor: HlsConvertor::new(client)?,
+            hls_convertor,
+            http_client: client,
             authenticated_stream_id: None
         })
     }

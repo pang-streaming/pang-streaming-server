@@ -14,16 +14,21 @@ pub struct HlsConvertor {
     pipelines: Arc<Mutex<HashMap<u32, Pipeline>>>,
     output_dir: String,
     segment_delay: u32,
-    http_client: Arc<Client>,
 }
 
 pub struct Pipeline {
     pipeline: gst::Pipeline,
-    pub(crate) app_src: AppSrc,
+    app_src: AppSrc,
+}
+
+impl Pipeline {
+    pub fn app_src(&self) -> &AppSrc {
+        &self.app_src
+    }
 }
 
 impl HlsConvertor {
-    pub fn new(client: Arc<Client>) -> Result<Self, Box<dyn Error>> {
+    pub fn new() -> Result<Self, Box<dyn Error>> {
         let config = crate::config::get_config();
         let segment_delay = config.server.segment_delay;
         let output_dir = "./hls_output".to_string();
@@ -34,7 +39,6 @@ impl HlsConvertor {
             pipelines: Arc::new(Mutex::new(HashMap::new())),
             output_dir,
             segment_delay,
-            http_client: client,
         })
     }
 

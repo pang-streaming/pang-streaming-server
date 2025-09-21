@@ -13,6 +13,7 @@ mod transform_layer;
 
 use handler::Handler;
 use m3u8_server::start_m3u8_server_background;
+use crate::transform_layer::hls_convertor::HlsConvertor;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,14 +22,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     let config = config::get_config();
     let client = Arc::new(Client::new());
+    let hls_convertor = Arc::new(HlsConvertor::new()?);
     let listener = TcpListener::bind(format!("[::]:{}", config.server.port)).await?;
     println!("RTMP Server listening on [::]:{}", config.server.port);
 
     while let Ok((stream, addr)) = listener.accept().await {
         println!("New connection from: {}", addr);
-        let clone_client = Arc::clone(&client);
+        let hls_convertor_clone = Arc::clone(&hls_convertor);
+        let client_clone = Arc::clone(&client);
         tokio::spawn(async move {
-            let handler = match Handler::new(clone_client) {
+            let handler = match Handler::new(hls_convertor_clone, client_clone) {
                 Ok(h) => h,
                 Err(e) => {
                     eprintln!("Failed to create handler for {}: {}", addr, e);

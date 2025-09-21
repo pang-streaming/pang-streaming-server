@@ -21,7 +21,7 @@ pub fn push_to_gstreamer(
             map.copy_from_slice(&flv_data);
         }
 
-        match pipeline_info.app_src.push_buffer(buffer) {
+        match pipeline_info.app_src().push_buffer(buffer) {
             Ok(_) => {}
             Err(gst::FlowError::Flushing) => {
                 println!("Pipeline is flushing for stream {}", stream_id);
