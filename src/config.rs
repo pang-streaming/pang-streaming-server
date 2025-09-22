@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub server: ServerConfig,
-    pub hls: HlsConfig
+    pub hls: HlsConfig,
+    pub api: ApiConfig,
 }
 
 #[derive(Debug, Deserialize)]
@@ -18,6 +19,11 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize)]
 pub struct HlsConfig {
     pub save_dir: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApiConfig {
+    pub host: String,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
