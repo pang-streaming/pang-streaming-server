@@ -33,8 +33,8 @@ impl SessionHandler for Handler {
             return Err(ServerSessionError::InvalidChunkSize(0));
         }
 
-        let authed_stream_id: &str = &authenticate_and_get_stream_id(stream_key, &self.http_client).await?;
         let config = config::get_config();
+        let authed_stream_id: &str = &authenticate_and_get_stream_id(&config.api.host, stream_key, &self.http_client).await?;
 
         if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, authed_stream_id, &config.server.host) {
             eprintln!("Failed to start HLS conversion: {}", e);
