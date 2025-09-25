@@ -5,7 +5,7 @@ use gstreamer::prelude::{ElementExt, ElementExtManual, GstBinExtManual};
 use gstreamer_app::{gst, AppSrc};
 use gstreamer_app::prelude::Cast;
 use crate::transform_layer::pads::dynamic_pads::setup_dynamic_pads;
-use crate::transform_layer::pipelines::pipeline_elements::{create_audio, create_output, create_source, create_thumbnail, create_thumbnail_queue, create_video};
+use crate::transform_layer::pipelines::pipeline_elements::{create_audio, create_output, create_source, create_video};
 use crate::utils::log_error::LogError;
 
 pub struct HlsConvertor {
@@ -86,50 +86,22 @@ impl HlsConvertor {
             stream_id,
             root_playlist,
             output_path,
-            segment_delay,
+            segment_delay
         )?;
-        
-        let (tee, queue_hls, queue_thumb) = create_thumbnail_queue(stream_id)?;
-
-        let (
-            avdec_h264,
-            videoconvert,
-            videorate,
-            capsfilter,
-            jpegenc,
-            multifilesink
-        ) = create_thumbnail(stream_id, output_path)?;
-
 
         pipeline.add_many(&[
             &app_src, &flvdemux,
             &video_elements.0, &video_elements.1,
             &audio_elements.0, &audio_elements.1,
             &mpeg_ts_mux, &hls_sink,
-            &tee, &queue_hls, &queue_thumb,
-            &avdec_h264, &videoconvert, &videorate, &capsfilter, &jpegenc, &multifilesink,
         ])?;
 
         app_src.link(&flvdemux)?;
         mpeg_ts_mux.link(&hls_sink)?;
 
-        video_elements.1.link(&tee)?;
-
-        tee.link(&queue_hls)?;
-        queue_hls.link(&mpeg_ts_mux)?;
-
-        tee.link(&queue_thumb)?;
-        queue_thumb.link(&avdec_h264)?;
-        avdec_h264.link(&videoconvert)?;
-        videoconvert.link(&videorate)?;
-        videorate.link(&capsfilter)?;
-        capsfilter.link(&jpegenc)?;
-        jpegenc.link(&multifilesink)?;
-
         setup_dynamic_pads(&flvdemux, video_elements, audio_elements, &mpeg_ts_mux);
-
         pipeline.set_state(gst::State::Playing)?;
-        
+
         let app_src_element = app_src.downcast::<AppSrc>().unwrap();
         Ok(Pipeline { pipeline, app_src: app_src_element })
     }

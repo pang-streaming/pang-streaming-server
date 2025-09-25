@@ -54,13 +54,12 @@ async fn get_segment_playlist(
             let modified_content = content
                 .lines()
                 .map(|line| {
-                    if (line.ends_with(".ts") || line.ends_with(".m4s")) && !line.starts_with("http") {
+                    if line.ends_with(".ts") && !line.starts_with("http") {
                         format!("http://localhost:8080/hls/{}/{}", stream_key, line)
-                    }
-                    else if line.starts_with("http://localhost:8080/") && !line.contains("/hls/") {
+                    } else if line.starts_with("http://localhost:8080/") && !line.contains("/hls/") {
                         line.replace(
                             &format!("http://localhost:8080/{}/", stream_key),
-                            &format!("http://localhost:8080/hls/{}/", stream_key),
+                            &format!("http://localhost:8080/hls/{}/", stream_key)
                         )
                     } else {
                         line.to_string()
@@ -68,7 +67,6 @@ async fn get_segment_playlist(
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
-
             Ok((
                 [(
                     header::CONTENT_TYPE.as_str().to_string(),
@@ -76,14 +74,13 @@ async fn get_segment_playlist(
                 )],
                 modified_content,
             ))
-        }
+        },
         Err(_) => {
             let default_playlist = "#EXTM3U\n\
-                 #EXT-X-VERSION:7\n\
+                 #EXT-X-VERSION:3\n\
                  #EXT-X-TARGETDURATION:6\n\
                  #EXT-X-MEDIA-SEQUENCE:0\n\
-                 #EXT-X-PLAYLIST-TYPE:EVENT\n"
-                .to_string();
+                 #EXT-X-PLAYLIST-TYPE:EVENT\n".to_string();
             Ok((
                 [(
                     header::CONTENT_TYPE.as_str().to_string(),
@@ -130,31 +127,13 @@ async fn get_ts_segment(
     Ok(([(header::CONTENT_TYPE, "video/mp2t")], body))
 }
 
-async fn get_m4s_segment(
-    Path((stream_key, segment)): Path<(String, String)>,
-) -> Result<impl IntoResponse, StatusCode> {
-    if !segment.ends_with(".m4s") {
-        return Err(StatusCode::NOT_FOUND);
-    }
-
-    let file_path = PathBuf::from("hls_output").join(&stream_key).join(&segment);
-
-    let file = File::open(file_path)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    let stream = ReaderStream::new(file);
-    let body = Body::from_stream(stream);
-
-    Ok(([(header::CONTENT_TYPE, "video/mp4")], body))
-}
-
 pub async fn start_m3u8_server() -> Result<(), Box<dyn std::error::Error>> {
     let server = Arc::new(M3U8Server::new());
     let app = Router::new()
         .route("/hls/{stream_key}/master.m3u8", get(get_master_playlist))
         .route("/hls/{stream_key}/playlist.m3u8", get(get_segment_playlist))
         .route("/hls/{stream_key}/init.mp4", get(get_init_mp4))
-        .route("/hls/{stream_key}/{segment}", get(get_m4s_segment))
+        .route("/hls/{stream_key}/{segment}", get(get_ts_segment))
         .layer(CorsLayer::permissive())
         .with_state(server);
 
