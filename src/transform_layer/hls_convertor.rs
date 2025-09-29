@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync::{Arc, Mutex};
-use gstreamer::prelude::{ElementExt, ElementExtManual, GstBinExtManual};
+use gstreamer::glib::object::ObjectExt;
+use gstreamer::prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManual, GstObjectExt, PadExt};
 use gstreamer_app::{gst, AppSrc};
 use gstreamer_app::prelude::Cast;
 use crate::transform_layer::pads::dynamic_pads::setup_dynamic_pads;
@@ -56,7 +57,7 @@ impl HlsConvertor {
             std::fs::create_dir_all(&output_path)?;
         }
 
-        let root_playlist = format!("{}/{}/", stream_host, stream_name);
+        let root_playlist = format!("{}/{}", stream_host, stream_id);
         let pipeline = self.create_hls_pipeline(
             stream_id,
             &root_playlist,
@@ -82,28 +83,42 @@ impl HlsConvertor {
         let (app_src, flvdemux) = create_source(stream_id)?;
         let video_elements = create_video(stream_id)?;
         let audio_elements = create_audio(stream_id)?;
-        let (mpeg_ts_mux, hls_sink) = create_output(
+        let aws_hls_sink= create_output(
             stream_id,
             root_playlist,
             output_path,
-            segment_delay
+            segment_delay,
         )?;
 
+
+        
         pipeline.add_many(&[
-            &app_src, &flvdemux,
-            &video_elements.0, &video_elements.1,
-            &audio_elements.0, &audio_elements.1,
-            &mpeg_ts_mux, &hls_sink,
+            &app_src,
+            &flvdemux,
+            &video_elements.0,
+            &video_elements.1,
+            &audio_elements.0,
+            &audio_elements.1,
+            &aws_hls_sink,
         ])?;
 
         app_src.link(&flvdemux)?;
-        mpeg_ts_mux.link(&hls_sink)?;
 
-        setup_dynamic_pads(&flvdemux, video_elements, audio_elements, &mpeg_ts_mux);
+        setup_dynamic_pads(
+            &flvdemux,
+            video_elements,
+            audio_elements,
+            &aws_hls_sink,
+        );
+
         pipeline.set_state(gst::State::Playing)?;
 
         let app_src_element = app_src.downcast::<AppSrc>().unwrap();
-        Ok(Pipeline { pipeline, app_src: app_src_element })
+
+        Ok(Pipeline {
+            pipeline,
+            app_src: app_src_element,
+        })
     }
 
     pub fn stop_hls_conversion(&self, stream_id: u32) {

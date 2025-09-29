@@ -1,5 +1,6 @@
 use gstreamer_app::glib::BoolError;
 use gstreamer_app::gst;
+use gst::prelude::*;
 
 pub fn create_source(stream_id: u32) -> Result<(gst::Element, gst::Element), BoolError> {
     let app_src = gst::ElementFactory::make("appsrc")
@@ -34,21 +35,34 @@ pub fn create_audio(stream_id: u32) -> Result<(gst::Element, gst::Element), Bool
         .property("name", &format!("aacparse-{}", stream_id))
         .build()?;
 
+
     Ok((audio_queue, aac_parse))
 }
 
-pub fn create_output(stream_id: u32, root_playlist: &str, output_path: &str, segment_delay: u32) -> Result<(gst::Element, gst::Element), BoolError> {
-    let mpegtsmux = gst::ElementFactory::make("mpegtsmux")
-        .property("name", &format!("mpegtsmux-{}", stream_id))
+pub fn create_output(stream_id: u32, root_playlist: &str, output_path: &str, segment_delay: u32) -> Result<( gst::Element), BoolError> {
+    let awss3hlssink = gst::ElementFactory::make("awss3hlssink") 
+        .property("name", &format!("awss3hlssink-{}", stream_id))
+        .property("bucket", "") 
+        .property("region", "ap-northeast-2") 
+        .property("access-key", "") 
+        .property("secret-access-key", "") 
+        .property("endpoint-uri", "https://s3.ap-northeast-2.amazonaws.com") 
+        .property("key-prefix", &format!("hls_output/{}", stream_id)) 
         .build()?;
 
-    let hlssink = gst::ElementFactory::make("hlssink")
-        .property("playlist-root", root_playlist)
-        .property("playlist-location", &format!("{}/playlist.m3u8", output_path))
-        .property("location", &format!("{}/segment_%05d.ts", output_path))
-        .property("target-duration", segment_delay)
-        .property("max-files", 5u32)
-        .build()?;
+    let hlssink: gst::Element = awss3hlssink.property("hlssink");
+        hlssink.set_property("playlist-root", root_playlist.to_string());
+        hlssink.set_property(
+            "playlist-location",
+            "playlist.m3u8",
+        );
+        hlssink.set_property(
+            "location",
+            "segment_%05d.ts",
+        );
+        hlssink.set_property("target-duration", segment_delay);
+        hlssink.set_property("max-files", 0u32);
+        hlssink.set_property("playlist-length", 0u32);
 
-    Ok((mpegtsmux, hlssink))
+    Ok((awss3hlssink))
 }
