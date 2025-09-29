@@ -1,9 +1,10 @@
+use gstreamer::stream;
 use scuffle_rtmp::session::server::{ServerSessionError, SessionData, SessionHandler};
 use std::sync::{Arc};
 
 use reqwest::Client;
 use crate::authentication_layer::auth::authenticate_and_get_stream_id;
-use crate::config;
+use crate::{authentication_layer, config};
 use crate::transform_layer::gstreamer::push::push_to_gstreamer;
 use crate::transform_layer::hls_convertor::HlsConvertor;
 use crate::utils::log_error::LogError;

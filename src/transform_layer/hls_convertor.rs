@@ -6,7 +6,7 @@ use gstreamer::prelude::{ElementExt, ElementExtManual, GstBinExt, GstBinExtManua
 use gstreamer_app::{gst, AppSrc};
 use gstreamer_app::prelude::Cast;
 use crate::transform_layer::pads::dynamic_pads::setup_dynamic_pads;
-use crate::transform_layer::pipelines::pipeline_elements::{create_audio, create_output, create_source, create_video};
+use crate::transform_layer::pipelines::pipeline_elements::{create_audio, create_output, create_source, create_thumbnail_output, create_video};
 use crate::utils::log_error::LogError;
 
 pub struct HlsConvertor {
@@ -52,18 +52,12 @@ impl HlsConvertor {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let output_path = format!("{}/{}", self.output_dir, stream_name);
 
-        //로컬 테스트용 - daedyu
         if !self.output_dir.starts_with("s3://") {
             std::fs::create_dir_all(&output_path)?;
         }
 
         let root_playlist = format!("{}/{}", stream_host, stream_id);
-        let pipeline = self.create_hls_pipeline(
-            stream_id,
-            &root_playlist,
-            &output_path,
-            self.segment_delay,
-        )?;
+        let pipeline = self.create_hls_pipeline(stream_id, &root_playlist)?;
         let mut pipelines = self.pipelines.lock().unwrap();
         pipelines.insert(stream_id, pipeline);
         println!("HLS conversion started for stream {} (key: {})", stream_id, stream_name);
@@ -75,40 +69,34 @@ impl HlsConvertor {
         &self,
         stream_id: u32,
         root_playlist: &str,
-        output_path: &str,
-        segment_delay: u32,
     ) -> Result<Pipeline, Box<dyn Error + Send + Sync>> {
         let pipeline = gst::Pipeline::new();
+        let tee = gst::ElementFactory::make("tee")
+            .name(&format!("tee-{}", stream_id))
+            .build()?;
 
         let (app_src, flvdemux) = create_source(stream_id)?;
-        let video_elements = create_video(stream_id)?;
+        let (video_queue, h264parse) = create_video(stream_id)?;
         let audio_elements = create_audio(stream_id)?;
-        let aws_hls_sink= create_output(
-            stream_id,
-            root_playlist,
-            output_path,
-            segment_delay,
-        )?;
+        let aws_hls_sink = create_output(stream_id, root_playlist)?;
+        let thumbnail_elements: (gstreamer::Element, gstreamer::Element, gstreamer::Element, gstreamer::Element, gstreamer::Element, gstreamer::Element, gstreamer::Element, gstreamer::Element, gstreamer::Element) = create_thumbnail_output(stream_id)?;
 
-
-        
         pipeline.add_many(&[
-            &app_src,
-            &flvdemux,
-            &video_elements.0,
-            &video_elements.1,
-            &audio_elements.0,
-            &audio_elements.1,
-            &aws_hls_sink,
+            &app_src, &flvdemux, &video_queue, &h264parse, &audio_elements.0, &audio_elements.1, &aws_hls_sink, &tee,
+            &thumbnail_elements.0, &thumbnail_elements.1, &thumbnail_elements.2, &thumbnail_elements.3, &thumbnail_elements.4,
+            &thumbnail_elements.5, &thumbnail_elements.6, &thumbnail_elements.7, &thumbnail_elements.8,
         ])?;
 
         app_src.link(&flvdemux)?;
 
         setup_dynamic_pads(
             &flvdemux,
-            video_elements,
+            &video_queue,
+            &h264parse,
             audio_elements,
             &aws_hls_sink,
+            &thumbnail_elements,
+            &tee,
         );
 
         pipeline.set_state(gst::State::Playing)?;

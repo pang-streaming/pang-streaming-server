@@ -13,7 +13,7 @@ pub fn create_source(stream_id: u32) -> Result<(gst::Element, gst::Element), Boo
     Ok((app_src, flvdemux))
 }
 
-pub fn create_video(stream_id: u32) -> Result<(gst::Element, gst::Element), BoolError>  {
+pub fn create_video(stream_id: u32) -> Result<(gst::Element, gst::Element), BoolError> {
     let video_queue = gst::ElementFactory::make("queue")
         .property("name", &format!("videoqueue-{}", stream_id))
         .build()?;
@@ -35,34 +35,110 @@ pub fn create_audio(stream_id: u32) -> Result<(gst::Element, gst::Element), Bool
         .property("name", &format!("aacparse-{}", stream_id))
         .build()?;
 
-
     Ok((audio_queue, aac_parse))
 }
 
-pub fn create_output(stream_id: u32, root_playlist: &str, output_path: &str, segment_delay: u32) -> Result<( gst::Element), BoolError> {
-    let awss3hlssink = gst::ElementFactory::make("awss3hlssink") 
+pub fn create_output(stream_id: u32, root_playlist: &str) -> Result<gst::Element, BoolError> {
+    let s3_config = crate::config::get_config().s3.clone();
+    let awss3hlssink = gst::ElementFactory::make("awss3hlssink")
         .property("name", &format!("awss3hlssink-{}", stream_id))
-        .property("bucket", "") 
-        .property("region", "ap-northeast-2") 
-        .property("access-key", "") 
-        .property("secret-access-key", "") 
-        .property("endpoint-uri", "https://s3.ap-northeast-2.amazonaws.com") 
-        .property("key-prefix", &format!("hls_output/{}", stream_id)) 
+        .property("bucket", &s3_config.bucket)
+        .property("region", &s3_config.region)
+        .property("access-key", &s3_config.access_key)
+        .property("secret-access-key", &s3_config.secret_access_key)
+        .property("endpoint-uri", &s3_config.endpoint_uri)
+        .property("key-prefix", &format!("hls_output/{}", stream_id))
         .build()?;
 
     let hlssink: gst::Element = awss3hlssink.property("hlssink");
-        hlssink.set_property("playlist-root", root_playlist.to_string());
-        hlssink.set_property(
-            "playlist-location",
-            "playlist.m3u8",
-        );
-        hlssink.set_property(
-            "location",
-            "segment_%05d.ts",
-        );
-        hlssink.set_property("target-duration", segment_delay);
-        hlssink.set_property("max-files", 0u32);
-        hlssink.set_property("playlist-length", 0u32);
+    hlssink.set_property("playlist-root", root_playlist.to_string());
+    hlssink.set_property("playlist-location", "playlist.m3u8");
+    hlssink.set_property("location", "segment_%05d.ts");
+    hlssink.set_property("target-duration", 2u32);
+    hlssink.set_property("max-files", 5u32);
 
-    Ok((awss3hlssink))
+    Ok(awss3hlssink)
+}
+
+pub fn create_thumbnail_output(
+    stream_id: u32,
+) -> Result<
+    (
+        gst::Element,
+        gst::Element,
+        gst::Element,
+        gst::Element,
+        gst::Element,
+        gst::Element,
+        gst::Element,
+        gst::Element,
+        gst::Element,
+    ),
+    BoolError,
+> {
+    let s3_config = crate::config::get_config().s3.clone();
+
+    let queue = gst::ElementFactory::make("queue")
+        .name(&format!("queue-thumb-{}", stream_id))
+        .property_from_str("leaky", "downstream") 
+        .build()?;
+
+    let h264parse = gst::ElementFactory::make("h264parse")
+        .name(&format!("h264parse-thumb-{}", stream_id))
+        .build()?;
+
+    let avdec_h264 = gst::ElementFactory::make("avdec_h264")
+        .name(&format!("avdec-thumb-{}", stream_id))
+        .build()?;
+
+    let videoconvert = gst::ElementFactory::make("videoconvert")
+        .name(&format!("videoconvert-thumb-{}", stream_id))
+        .build()?;
+
+    let videoscale = gst::ElementFactory::make("videoscale")
+        .name(&format!("videoscale-thumb-{}", stream_id))
+        .build()?;
+
+    let videorate = gst::ElementFactory::make("videorate")
+        .name(&format!("videorate-thumb-{}", stream_id))
+        .build()?;
+
+    let caps = gst::Caps::builder("video/x-raw")
+        .field("width", 640)
+        .field("height", 360)
+        .field("framerate", gst::Fraction::new(1, 30))
+        .build();
+
+    let capsfilter = gst::ElementFactory::make("capsfilter")
+        .name(&format!("capsfilter-thumb-{}", stream_id))
+        .property("caps", &caps)
+        .build()?;
+
+    let jpegenc = gst::ElementFactory::make("jpegenc")
+        .name(&format!("jpegenc-thumb-{}", stream_id))
+        .build()?;
+
+    let awss3putobjectsink = gst::ElementFactory::make("awss3putobjectsink")
+        .name(&format!("thumbsink-{}", stream_id))
+        .property("bucket", &s3_config.bucket)
+        .property("region", &s3_config.region)
+        .property("access-key", &s3_config.access_key)
+        .property("secret-access-key", &s3_config.secret_access_key)
+        .property("endpoint-uri", &s3_config.endpoint_uri)
+        .property("key", &format!("hls_output/{}/thumb.jpg", stream_id))
+        .property("sync", &false)
+        .property("async", &true)
+        .build()?;
+
+    Ok((
+        queue,
+        h264parse,
+        avdec_h264,
+        videoconvert,
+        videoscale,
+        videorate,
+        capsfilter,
+        jpegenc,
+        awss3putobjectsink,
+    ))
 }
