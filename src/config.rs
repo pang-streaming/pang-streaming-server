@@ -6,6 +6,8 @@ use std::sync::OnceLock;
 pub struct Config {
     pub server: ServerConfig,
     pub hls: HlsConfig,
+    pub adaptive_bitrate: AdaptiveBitrateConfig,
+    pub api: ApiConfig,
     pub s3: S3Config,
 }
 
@@ -16,9 +18,34 @@ pub struct ServerConfig {
     pub port: u16,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct HlsConfig {
     pub save_dir: String,
+    pub segment_duration: f64,
+    pub part_duration: f64,
+    pub max_segments: u32,
+    pub max_parts: u32,
+    pub enable_server_push: bool,
+    pub enable_preload_hint: bool,
+    pub target_latency: f64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AdaptiveBitrateConfig {
+    pub enabled: bool,
+    pub variants: Vec<BitrateVariant>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct BitrateVariant {
+    pub bandwidth: u32,
+    pub resolution: String,
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ApiConfig {
+    pub host: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
