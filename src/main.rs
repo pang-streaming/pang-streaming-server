@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use gstreamer_app::gst;
 use scuffle_rtmp::ServerSession;
 use reqwest::Client;
 use tokio::net::TcpListener;
@@ -16,7 +15,6 @@ use crate::transform_layer::hls_convertor::HlsConvertor;
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    gst::init().expect("Failed to initialize GStreamer");
     start_m3u8_server_background();
     tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     let config = config::get_config();

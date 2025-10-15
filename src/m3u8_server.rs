@@ -55,11 +55,11 @@ async fn get_segment_playlist(
                 .lines()
                 .map(|line| {
                     if line.ends_with(".ts") && !line.starts_with("http") {
-                        format!("http://localhost:8080/hls/{}/{}", stream_key, line)
-                    } else if line.starts_with("http://localhost:8080/") && !line.contains("/hls/") {
+                        format!("http://localhost:8081/hls/{}/{}", stream_key, line)
+                    } else if line.starts_with("http://localhost:8081/") && !line.contains("/hls/") {
                         line.replace(
-                            &format!("http://localhost:8080/{}/", stream_key),
-                            &format!("http://localhost:8080/hls/{}/", stream_key)
+                            &format!("http://localhost:8081/{}/", stream_key),
+                            &format!("http://localhost:8081/hls/{}/", stream_key)
                         )
                     } else {
                         line.to_string()

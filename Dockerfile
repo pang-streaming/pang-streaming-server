@@ -1,17 +1,9 @@
 # 최신 Rust 버전 사용
 FROM rust:1.75-bullseye
 
-# GStreamer 및 필요한 라이브러리 설치
+# FFmpeg 및 필요한 라이브러리 설치
 RUN apt-get update && apt-get install -y \
-    libgstreamer1.0-dev \
-    libgstreamer-plugins-base1.0-dev \
-    libgstreamer-plugins-bad1.0-dev \
-    gstreamer1.0-plugins-base \
-    gstreamer1.0-plugins-good \
-    gstreamer1.0-plugins-bad \
-    gstreamer1.0-plugins-ugly \
-    gstreamer1.0-libav \
-    gstreamer1.0-tools \
+    ffmpeg \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
