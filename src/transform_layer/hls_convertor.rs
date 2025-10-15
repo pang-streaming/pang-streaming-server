@@ -46,15 +46,21 @@ impl HlsConvertor {
         }
 
         let output_playlist = format!("{}/playlist.m3u8", output_path);
-        let segment_filename_pattern = format!("{}/output_%03d.ts", output_path);
+        let init_file = format!("{}/init.mp4", output_path);
+        let segment_filename_pattern = format!("{}/segment_%d.m4s", output_path);
 
         let mut child = Command::new("ffmpeg")
             .args([
                 "-i", "pipe:0",
-                "-c", "copy",
+                "-c:v", "copy",
+                "-c:a", "copy",
+                "-preset", "veryfast",
                 "-f", "hls",
-                "-hls_time", &self.segment_delay.to_string(),
+                "-hls_time", "0.5",
                 "-hls_list_size", "0",
+                "-hls_flags", "delete_segments+program_date_time+temp_file+independent_segments",
+                "-hls_segment_type", "fmp4",
+                "-hls_fmp4_init_filename", "init.mp4",
                 "-hls_segment_filename", &segment_filename_pattern,
                 &output_playlist,
             ])

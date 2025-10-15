@@ -54,13 +54,8 @@ async fn get_segment_playlist(
             let modified_content = content
                 .lines()
                 .map(|line| {
-                    if line.ends_with(".ts") && !line.starts_with("http") {
+                    if (line.ends_with(".ts") || line.ends_with(".m4s")) && !line.starts_with("http") {
                         format!("http://localhost:8081/hls/{}/{}", stream_key, line)
-                    } else if line.starts_with("http://localhost:8081/") && !line.contains("/hls/") {
-                        line.replace(
-                            &format!("http://localhost:8081/{}/", stream_key),
-                            &format!("http://localhost:8081/hls/{}/", stream_key)
-                        )
                     } else {
                         line.to_string()
                     }
@@ -77,8 +72,8 @@ async fn get_segment_playlist(
         },
         Err(_) => {
             let default_playlist = "#EXTM3U\n\
-                 #EXT-X-VERSION:3\n\
-                 #EXT-X-TARGETDURATION:6\n\
+                 #EXT-X-VERSION:7\n\
+                 #EXT-X-TARGETDURATION:1\n\
                  #EXT-X-MEDIA-SEQUENCE:0\n\
                  #EXT-X-PLAYLIST-TYPE:EVENT\n".to_string();
             Ok((
@@ -91,6 +86,32 @@ async fn get_segment_playlist(
         }
     }
 }
+
+async fn get_segment_file(
+    Path((stream_key, segment)): Path<(String, String)>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let allowed_extensions = [".ts", ".m4s"];
+    if !allowed_extensions.iter().any(|ext| segment.ends_with(ext)) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let file_path = PathBuf::from("hls_output").join(&stream_key).join(&segment);
+
+    let file = File::open(file_path)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    let content_type = if segment.ends_with(".m4s") {
+        "video/iso.segment"
+    } else {
+        "video/mp2t"
+    };
+
+    Ok(([(header::CONTENT_TYPE, content_type)], body))
+}
+
 
 async fn get_init_mp4(
     Path(stream_key): Path<String>,
@@ -129,11 +150,12 @@ async fn get_ts_segment(
 
 pub async fn start_m3u8_server() -> Result<(), Box<dyn std::error::Error>> {
     let server = Arc::new(M3U8Server::new());
+
     let app = Router::new()
         .route("/hls/{stream_key}/master.m3u8", get(get_master_playlist))
         .route("/hls/{stream_key}/playlist.m3u8", get(get_segment_playlist))
         .route("/hls/{stream_key}/init.mp4", get(get_init_mp4))
-        .route("/hls/{stream_key}/{segment}", get(get_ts_segment))
+        .route("/hls/{stream_key}/{segment}", get(get_segment_file)) // 👈 변경된 핸들러 사용
         .layer(CorsLayer::permissive())
         .with_state(server);
 
@@ -141,6 +163,7 @@ pub async fn start_m3u8_server() -> Result<(), Box<dyn std::error::Error>> {
     axum::serve(listener, app).await?;
     Ok(())
 }
+
 
 pub fn start_m3u8_server_background() {
     tokio::spawn(async {
