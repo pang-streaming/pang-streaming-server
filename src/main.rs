@@ -1,80 +1,56 @@
 use std::sync::Arc;
-use scuffle_rtmp::ServerSession;
-use reqwest::Client;
-use tokio::net::TcpListener;
+use tokio;
+use tracing_subscriber;
+
 mod config;
-mod handler;
-mod m3u8_server;
+mod presentation_layer;
+mod business_layer;
+mod data_layer;
 mod authentication_layer;
 mod utils;
-mod transform_layer;
-mod ll_hls;
-mod monitoring;
 
-use handler::Handler;
-use m3u8_server::start_m3u8_server_background;
-use crate::transform_layer::hls_convertor::HlsConvertor;
-use crate::monitoring::{MetricsCollector, LatencyMonitor};
+use config::Config;
+use business_layer::streaming::hls_convertor::HlsConvertor;
+use business_layer::monitoring::metrics_collector::MetricsCollector;
+use business_layer::monitoring::latency_monitor::LatencyMonitor;
+use presentation_layer::api_handlers::rtmp_handler::Handler;
 
-#[tokio::main(flavor = "multi_thread")]
+#[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 로깅 초기화
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let config = config::get_config();
-    let client = Arc::new(Client::new());
-    let mut hls_convertor = HlsConvertor::new(format!("{}", config.hls.save_dir))?;
+    // 설정 로드
+    let config = Config::load()?;
     
-    // 메트릭 수집기와 지연시간 모니터 초기화
+    println!("🚀 LL-HLS Streaming Server Starting...");
+    println!("📡 RTMP Server: rtmp://localhost:1935/live");
+    println!("🌐 HLS Server: http://localhost:8081/hls");
+    println!("📊 Metrics API: http://localhost:8081/metrics");
+    println!("⚡ LL-HLS Features: Enabled");
+    println!("🎯 Target Latency: {}s", config.hls.target_latency);
+
+    // LL-HLS 컴포넌트 초기화
     let metrics_collector = Arc::new(MetricsCollector::new());
-    let latency_monitor = Arc::new(LatencyMonitor::new(
-        Arc::clone(&metrics_collector),
-        config.hls.target_latency * 1000.0, // 초를 밀리초로 변환
-    ));
-    
-    // HLS 변환기에 메트릭 수집기와 지연시간 모니터 설정
-    hls_convertor.set_metrics_collector(Arc::clone(&metrics_collector));
-    hls_convertor.set_latency_monitor(Arc::clone(&latency_monitor));
-    
-    let hls_convertor = Arc::new(hls_convertor);
-    
-    // LL-HLS M3U8 서버 시작
-    start_m3u8_server_background(
-        Arc::clone(&hls_convertor),
-        Arc::clone(&metrics_collector),
-        Arc::clone(&latency_monitor),
+    let latency_monitor = Arc::new(LatencyMonitor::new(metrics_collector.clone(), config.hls.target_latency * 1000.0));
+    let hls_convertor = Arc::new(HlsConvertor::new(config.clone(), metrics_collector.clone(), latency_monitor.clone()).await.map_err(|e| format!("Failed to initialize HLS convertor: {}", e))?);
+
+    // M3U8 서버 시작 (백그라운드)
+    crate::presentation_layer::http_server::m3u8_server::start_m3u8_server_background(
+        hls_convertor.clone(),
+        metrics_collector.clone(),
+        latency_monitor.clone(),
     );
-    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+
+    println!("✅ LL-HLS Streaming Server Started Successfully!");
+    println!("🎬 Ready to receive RTMP streams and serve LL-HLS content");
     
-    let listener = TcpListener::bind(format!("[::]:{}", config.server.port)).await?;
-    println!("🚀 LL-HLS RTMP Server listening on [::]:{}", config.server.port);
-    println!("📺 HLS Playlist available at: http://localhost:8081/hls/{{stream_key}}/playlist.m3u8");
-    println!("📊 Metrics available at: http://localhost:8081/metrics");
-    println!("🎯 Target latency: {}s", config.hls.target_latency);
-    println!("⚡ Segment duration: {}s", config.hls.segment_duration);
-    println!("🔧 Part duration: {}s", config.hls.part_duration);
-    println!("🔄 Adaptive bitrate: {}", if config.adaptive_bitrate.enabled { "enabled" } else { "disabled" });
-
-    while let Ok((stream, addr)) = listener.accept().await {
-        println!("New connection from: {}", addr);
-        let hls_convertor_clone = Arc::clone(&hls_convertor);
-        let client_clone = Arc::clone(&client);
-        tokio::spawn(async move {
-            let handler = match Handler::new(hls_convertor_clone, client_clone) {
-                Ok(h) => h,
-                Err(e) => {
-                    eprintln!("Failed to create handler for {}: {}", addr, e);
-                    return;
-                }
-            };
-
-            let session = ServerSession::new(stream, handler);
-            if let Err(err) = session.run().await {
-                eprintln!("Session error from {}: {:?}", addr, err);
-            }
-        });
-    }
+    // RTMP 서버 시작
+    let rtmp_address = format!("{}:{}", config.server.host, config.server.port);
+    let handler = Handler::new(hls_convertor.clone());
+    handler.start_rtmp_server(&rtmp_address).await.map_err(|e| format!("RTMP server error: {}", e))?;
+    
     Ok(())
 }

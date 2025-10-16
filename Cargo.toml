@@ -22,3 +22,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 thiserror = "1.0"
+aws-sdk-s3 = "1.0"
+aws-config = "1.0"
+aws-types = "1.0"
+aws-credential-types = "1.0"
+notify = "6.0"

@@ -1,8 +1,7 @@
 use serde::Deserialize;
 use std::fs;
-use std::sync::OnceLock;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Config {
     pub server: ServerConfig,
     pub hls: HlsConfig,
@@ -11,7 +10,7 @@ pub struct Config {
     pub s3: S3Config,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ServerConfig {
     pub host: String,
     pub segment_delay: u32,
@@ -43,7 +42,7 @@ pub struct BitrateVariant {
     pub name: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct ApiConfig {
     pub host: String,
 }
@@ -57,12 +56,10 @@ pub struct S3Config {
     pub endpoint_uri: String,
 }
 
-static CONFIG: OnceLock<Config> = OnceLock::new();
-
-pub fn get_config() -> &'static Config {
-    CONFIG.get_or_init(|| {
-        let toml_str =
-            fs::read_to_string("config.toml").expect("환경변수를 불러오는데 실패했습니다.");
-        toml::from_str(&toml_str).expect("환경변수를 파싱하는데 실패했습니다.")
-    })
+impl Config {
+    pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+        let toml_str = fs::read_to_string("config.toml")?;
+        let config: Config = toml::from_str(&toml_str)?;
+        Ok(config)
+    }
 }

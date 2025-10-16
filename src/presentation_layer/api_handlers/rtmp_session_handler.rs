@@ -1,43 +1,37 @@
-use scuffle_rtmp::session::server::{ServerSessionError, SessionData, SessionHandler};
-use std::sync::{Arc};
-use std::io::Write;
+use std::sync::Arc;
+use scuffle_rtmp::session::server::{ServerSession, ServerSessionError, SessionHandler, SessionData};
+use crate::business_layer::streaming::hls_convertor::HlsConvertor;
 
-use reqwest::Client;
-use crate::authentication_layer::auth::authenticate_and_get_stream_id;
-use crate::{authentication_layer, config};
-use crate::transform_layer::hls_convertor::HlsConvertor;
-use crate::utils::log_error::LogError;
-
-pub struct Handler {
+/// RTMP 세션 핸들러
+pub struct RtmpSessionHandler {
     hls_convertor: Arc<HlsConvertor>,
-    http_client: Arc<Client>,
 }
 
-impl Handler {
-    pub fn new(hls_convertor: Arc<HlsConvertor>, client: Arc<Client>) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {
-            hls_convertor,
-            http_client: client,
-        })
+impl RtmpSessionHandler {
+    /// 새로운 RTMP 세션 핸들러 생성
+    pub fn new(hls_convertor: Arc<HlsConvertor>) -> Self {
+        Self { hls_convertor }
     }
 }
 
-impl SessionHandler for Handler {
+impl SessionHandler for RtmpSessionHandler {
     async fn on_publish(
         &mut self,
         stream_id: u32,
         _app_name: &str,
         stream_key: &str,
     ) -> Result<(), ServerSessionError> {
-        if stream_key.is_empty() {
+        println!("📡 RTMP publish request: stream_id={}, stream_key={}", stream_id, stream_key);
+
+        // 스트림 데이터 크기 검증
+        if stream_id == 0 {
             return Err(ServerSessionError::InvalidChunkSize(0));
         }
 
         // let authed_stream_id: &str = &authenticate_and_get_stream_id(stream_key, &self.http_client).await?;
         let authed_stream_id = stream_key;
-        let config = config::get_config();
 
-        if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, authed_stream_id, &config.server.host).await {
+        if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, authed_stream_id).await {
             eprintln!("Failed to start HLS conversion: {}", e);
             return Err(ServerSessionError::InvalidChunkSize(0));
         }
@@ -48,20 +42,18 @@ impl SessionHandler for Handler {
         header.push(0x05); // Flags (audio + video)
         header.extend_from_slice(&9u32.to_be_bytes()); // DataOffset
         header.extend_from_slice(&0u32.to_be_bytes()); // PreviousTagSize0
-
-        let pipelines = self.hls_convertor.get_pipelines();
-        let mut pipelines = pipelines.lock().unwrap();
-        if let Some(pipeline) = pipelines.get_mut(&stream_id) {
-            if let Err(e) = pipeline.stdin.write_all(&header) {
-                eprintln!("Failed to write FLV header: {}", e);
-            }
+        // FLV 헤더를 스트림 데이터로 처리
+        if let Err(e) = self.hls_convertor.process_stream_data(stream_id, &header).await {
+            eprintln!("Failed to process FLV header: {}", e);
         }
 
         Ok(())
     }
 
     async fn on_unpublish(&mut self, stream_id: u32) -> Result<(), ServerSessionError> {
-        self.hls_convertor.stop_hls_conversion(stream_id);
+        if let Err(e) = self.hls_convertor.stop_hls_conversion(stream_id, "unknown").await {
+            eprintln!("Failed to stop HLS conversion: {}", e);
+        }
         Ok(())
     }
 
@@ -86,12 +78,13 @@ impl SessionHandler for Handler {
         flv_tag.extend_from_slice(&payload);
         flv_tag.extend_from_slice(&(data_size + 11).to_be_bytes()); // PreviousTagSize
 
-        let pipelines = self.hls_convertor.get_pipelines();
-        let mut pipelines = pipelines.lock().unwrap();
-        if let Some(pipeline) = pipelines.get_mut(&stream_id) {
-            if let Err(e) = pipeline.stdin.write_all(&flv_tag) {
-                eprintln!("Failed to write FLV tag: {}", e);
+        if let Err(e) = self.hls_convertor.process_stream_data(stream_id, &flv_tag).await {
+            // 파이프라인이 깨진 경우 더 이상 데이터를 전송하지 않음
+            if e.to_string().contains("Pipeline broken") {
+                eprintln!("Pipeline broken for stream {}, stopping data processing", stream_id);
+                return Ok(()); // 더 이상 데이터 처리 중단
             }
+            eprintln!("Failed to process stream data: {}", e);
         }
 
         Ok(())

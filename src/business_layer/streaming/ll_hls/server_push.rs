@@ -1,12 +1,10 @@
 use axum::{
-    extract::Path,
     http::{HeaderMap, HeaderValue, StatusCode},
     response::Response,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tower_http::cors::CorsLayer;
 
 #[derive(Debug, Clone)]
 pub struct PushResource {
