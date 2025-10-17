@@ -23,11 +23,6 @@ impl SessionHandler for RtmpSessionHandler {
     ) -> Result<(), ServerSessionError> {
         println!("📡 RTMP publish request: stream_id={}, stream_key={}", stream_id, stream_key);
 
-        // 스트림 데이터 크기 검증
-        if stream_id == 0 {
-            return Err(ServerSessionError::InvalidChunkSize(0));
-        }
-
         // let authed_stream_id: &str = &authenticate_and_get_stream_id(stream_key, &self.http_client).await?;
         let authed_stream_id = stream_key;
 
