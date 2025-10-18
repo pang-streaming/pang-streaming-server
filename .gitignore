@@ -2,3 +2,6 @@
 config.toml
 .idea
 /hls_output
+src/.DS_Store
+src/presentation_layer/.DS_Store
+.DS_Store

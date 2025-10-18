@@ -12,6 +12,25 @@ impl RtmpSessionHandler {
     pub fn new(hls_convertor: Arc<HlsConvertor>) -> Self {
         Self { hls_convertor }
     }
+
+    /// 스트림키를 가공하여 파라미터를 제거하고 깔끔한 경로로 변환
+    fn sanitize_stream_key(&self, stream_key: &str) -> String {
+        // URL 파라미터 제거 (? 이후의 모든 내용)
+        let clean_key = if let Some(query_pos) = stream_key.find('?') {
+            &stream_key[..query_pos]
+        } else {
+            stream_key
+        };
+
+        // 특수문자 제거 및 안전한 파일명으로 변환
+        clean_key
+            .chars()
+            .map(|c| match c {
+                '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => '_',
+                _ => c,
+            })
+            .collect::<String>()
+    }
 }
 
 impl SessionHandler for RtmpSessionHandler {
@@ -24,9 +43,11 @@ impl SessionHandler for RtmpSessionHandler {
         println!("📡 RTMP publish request: stream_id={}, stream_key={}", stream_id, stream_key);
 
         // let authed_stream_id: &str = &authenticate_and_get_stream_id(stream_key, &self.http_client).await?;
-        let authed_stream_id = stream_key;
+        let authed_stream_id = self.sanitize_stream_key(stream_key);
 
-        if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, authed_stream_id).await {
+        println!("📡 Processed stream key: {} -> {}", stream_key, authed_stream_id);
+
+        if let Err(e) = self.hls_convertor.start_hls_conversion(stream_id, &authed_stream_id).await {
             eprintln!("Failed to start HLS conversion: {}", e);
             return Err(ServerSessionError::InvalidChunkSize(0));
         }

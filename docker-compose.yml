@@ -6,14 +6,11 @@ services:
     container_name: pang-streaming-server
     restart: unless-stopped
     ports:
-      - "1935:1935"  # 내부 1935, 외부 1936으로 변경
+      - "1936:1935"  # 내부 1935, 외부 1936으로 변경
       - "8081:8081"
     volumes:
       - ./hls_output:/app/hls_output
       - ./deploy/configs/config.toml:/app/config.toml:ro
-    environment:
-      - RUST_LOG=info
-      - RUST_BACKTRACE=1
     networks:
       - pang-network
 
@@ -30,7 +27,7 @@ services:
     ports:
       - "1985:1985"    # HTTP API
       - "8080:8080"    # HTTP (HLS, WHIP, WHEP)
-      - "1985:1985/udp" # WebRTC
+      - "8000:8000/udp" # WebRTC
     networks:
       - pang-network
 

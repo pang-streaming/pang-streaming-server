@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Cargo 파일들 먼저 복사 (캐싱 최적화)
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml ./
+COPY Cargo.lock ./
 
 # 더미 소스로 의존성 빌드 (캐싱용)
 RUN mkdir src && echo "fn main() {}" > src/main.rs
@@ -32,5 +33,9 @@ EXPOSE 1935
 # HLS 출력 디렉토리 생성
 RUN mkdir -p /app/hls_output
 
-# 애플리케이션 실행
-CMD ["./target/release/pang-streaming-server"]
+# 디버깅을 위한 환경 변수 설정
+ENV RUST_LOG=debug
+ENV RUST_BACKTRACE=full
+
+# 애플리케이션 실행 (디버깅용)
+CMD ["sh", "-c", "echo 'Starting pang-streaming-server...' && ls -la /app && echo 'Config file:' && cat /app/config.toml && echo 'Running app...' && ./target/release/pang-streaming-server"]
