@@ -11,8 +11,16 @@ RUN apt-get update && apt-get install -y \
 # 작업 디렉토리 설정
 WORKDIR /app
 
-# 소스 코드 복사
-COPY . .
+# Cargo 파일들 먼저 복사 (캐싱 최적화)
+COPY Cargo.toml Cargo.lock ./
+
+# 더미 소스로 의존성 빌드 (캐싱용)
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release
+RUN rm -rf src
+
+# 실제 소스 코드 복사
+COPY src ./src
 
 # 애플리케이션 빌드
 RUN cargo build --release

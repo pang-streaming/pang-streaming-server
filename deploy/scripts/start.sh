@@ -2,7 +2,7 @@
 
 # 스트리밍 서버 시작 스크립트
 
-echo "Starting Pang Streaming Server with Xiu..."
+echo "Starting Pang Streaming Server with SRS..."
 
 # 로그 디렉토리 생성
 mkdir -p /app/logs
@@ -20,6 +20,8 @@ docker-compose ps
 
 echo "Services started successfully!"
 echo "RTMP URL: rtmp://localhost:1935/stream"
-echo "HLS URL: http://localhost/hls/"
-echo "API URL: http://localhost:8080"
+echo "HLS URL: http://localhost:8080/hls/"
+echo "SRS API URL: http://localhost:1985"
+echo "WebRTC URL: http://localhost:8080/rtc/"
+
 
