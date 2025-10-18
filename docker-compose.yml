@@ -1,0 +1,57 @@
+services:
+  pang-streaming-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pang-streaming-server
+    restart: unless-stopped
+    ports:
+      - "1935:1935"
+      - "8081:8081"
+    volumes:
+      - ./hls_output:/app/hls_output
+      - ./deploy/configs/config.toml:/app/config.toml:ro
+    environment:
+      - RUST_LOG=info
+      - RUST_BACKTRACE=1
+    networks:
+      - pang-network
+
+  xiu:
+    image: harlancn/xiu:latest
+    container_name: xiu-server
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - ./deploy/logs:/app/logs
+      - ./deploy/configs/xiu-config.toml:/app/config.toml:ro
+    command: ["/app/start.sh", "/app/config.toml"]
+    depends_on:
+      - pang-streaming-server
+    ports:
+      - "1936:1936"
+      - "1936:1936/udp"
+      - "8083:8083"
+      - "8083:8083/udp"
+      - "19302:19302/udp"
+      - "19302:19302/tcp"
+    networks:
+      pang-network:
+        ipv6_address: "2001:db8:1::100"
+    environment:
+      - RUST_LOG=info
+
+networks:
+  pang-network:
+    driver: bridge
+    enable_ipv6: true
+    driver_opts:
+      com.docker.network.enable_ipv6: "true"
+    ipam:
+      config:
+        - subnet: "172.16.238.0/24"
+        - subnet: "2001:db8:1::/64"
+
+volumes:
+  hls_output:
+    driver: local
